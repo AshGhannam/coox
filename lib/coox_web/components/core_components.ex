@@ -675,4 +675,27 @@ defmodule CooxWeb.CoreComponents do
   def translate_errors(errors, field) when is_list(errors) do
     for {^field, {msg, opts}} <- errors, do: translate_error({msg, opts})
   end
+
+  @doc false
+  attr :class, :string, default: nil
+
+  def loading_spinner(assigns) do
+    # from
+    ~H"""
+    <div class={["lds-spinner", @class]}>
+      <div></div>
+      <div></div>
+      <div></div>
+      <div></div>
+      <div></div>
+      <div></div>
+      <div></div>
+      <div></div>
+      <div></div>
+      <div></div>
+      <div></div>
+      <div></div>
+    </div>
+    """
+  end
 end
