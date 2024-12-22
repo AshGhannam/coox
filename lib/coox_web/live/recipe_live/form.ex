@@ -1,3 +1,4 @@
+# lib/coox_web/live/recipe_live/form.ex
 defmodule CooxWeb.RecipeLive.Form do
   use CooxWeb, :live_view
 
@@ -5,28 +6,67 @@ defmodule CooxWeb.RecipeLive.Form do
   alias Coox.Recipes.Recipe
 
   def render(assigns) do
-    ~H"""
+     ~H"""
     <.header><%= @page_title %></.header>
 
     <.simple_form for={@form} id="recipe-form" phx-change="validate" phx-submit="save">
       <div>
         <.label>Image</.label>
 
+        <div
+          :if={@recipe.image_path && Enum.empty?(@uploads.image.entries)}
+          class="mb-6 flex justify-center"
+        >
+          <img src={~p"/uploads/#{@recipe.image_path}"} alt="Recipe image" class="w-1/2 h-auto" />
+        </div>
+
         <%= for entry <- @uploads.image.entries do %>
           <figure class="flex justify-around">
-            <div>
+            <div class="relative">
               <.live_img_preview entry={entry} class="rounded max-h-64 shadow" />
               <figcaption class="text-center text-sm text-gray-700 mt-2">
                 <%= entry.client_name %>
               </figcaption>
+              <button
+                aria-label="cancel"
+                class="absolute top-1 right-2"
+                phx-click="cancel-upload"
+                phx-value-ref={entry.ref}
+                type="button"
+              >
+                &times;
+              </button>
             </div>
           </figure>
         <% end %>
-        <.live_file_input upload={@uploads.image} class="mt-2" />
-      </div>
-      <.input field={@form[:name]} type="text" label="Name" phx-debounce="2000"/>
-      <.input field={@form[:description]} type="textarea" label="Description" phx-debounce="2000" phx-hook="MaintainHeight" />
 
+        <div class="flex items-center justify-center w-full mt-2" phx-drop-target={@uploads.image.ref}>
+          <label
+            for={@uploads.image.ref}
+            class="flex flex-col items-center justify-center w-full h-64 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100"
+          >
+            <div class="flex flex-col items-center justify-center pt-5 pb-6">
+              <.icon name="hero-arrow-up-tray" class="w-8 h-8 mb-4 text-gray-500" />
+              <p class="mb-2 text-sm text-gray-500">
+                <span class="font-semibold">Click to upload</span> or drag and drop
+              </p>
+              <p class="text-xs text-gray-500">
+                PNG or JPG (Max. 2Mb)
+              </p>
+            </div>
+            <.live_file_input upload={@uploads.image} class="hidden" />
+          </label>
+        </div>
+      </div>
+
+      <.input field={@form[:name]} type="text" label="Name" phx-debounce />
+      <.input
+        field={@form[:description]}
+        type="textarea"
+        label="Description"
+        phx-debounce
+        phx-hook="MaintainHeight"
+      />
       <:actions>
         <div class="flex">
           <.button phx-disable-with="Saving...">Save Recipe</.button>
@@ -37,22 +77,17 @@ defmodule CooxWeb.RecipeLive.Form do
 
     <.back navigate={~p"/"}>Back</.back>
     """
-  end
+   end
 
   def mount(params, _session, socket) do
-    #recipe = %Recipe{}
-
     {:ok,
      socket
      |> allow_upload(:image,
-     accept: ~w(.png .jpg),
-     max_entries: 1,
-     max_file_size: 2 * 1024 * 1024
-       )
-       |> apply_action(socket.assigns.live_action, params)}
-    #  |> assign(:page_title, "New Recipe")
-    #  |> assign(:recipe, recipe)
-    #  |> assign(:form, to_form(Recipes.change_recipe(recipe)))}
+       accept: ~w(.png .jpg),
+       max_entries: 1,
+       max_file_size: 2 * 1024 * 1024
+     )
+     |> apply_action(socket.assigns.live_action, params)}
   end
 
   defp apply_action(socket, :edit, %{"id" => id}) do
@@ -73,34 +108,34 @@ defmodule CooxWeb.RecipeLive.Form do
     |> assign(:form, to_form(Recipes.change_recipe(recipe)))
   end
 
-  def handle_event("validate", %{"recipe" => recipe_params}, socket) do
-    changeset = Recipes.change_recipe(socket.assigns.recipe, recipe_params)
-    {:noreply, assign(socket, form: to_form(changeset, action: :validate))}
+  def handle_event("cancel-upload", %{"ref" => ref}, socket) do
+    {:noreply, cancel_upload(socket, :image, ref)}
   end
 
   @uploads_dir Path.join([:code.priv_dir(:coox), "static", "uploads"])
 
   def handle_event("save", %{"recipe" => recipe_params}, socket) do
-    #case Recipes.create_recipe(recipe_params, socket.assigns.current_user) do
     case save_recipe(socket, socket.assigns.live_action, recipe_params) do
-        {:ok, recipe} ->
-          image_path =
-            socket
-            |> consume_uploaded_entries(:image, fn %{path: path}, _entry ->
-              dest = Path.join(@uploads_dir, Path.basename(path))
-              File.cp!(path, dest)
-              {:ok, Path.basename(dest)}
-            end)
-            |> List.first()
+      {:ok, recipe} ->
+        image_path =
+          socket
+          |> consume_uploaded_entries(:image, fn %{path: path}, _entry ->
+            dest = Path.join(@uploads_dir, Path.basename(path))
+            File.cp!(path, dest)
+            {:ok, Path.basename(dest)}
+          end)
+          |> List.first()
 
-          if image_path do
-            Recipes.update_recipe_image_path!(recipe, image_path, socket.assigns.current_user)
+        if image_path do
+          Recipes.update_recipe_image_path!(recipe, image_path, socket.assigns.current_user)
+        end
+
+        flash_msg =
+          case socket.assigns.live_action do
+            :new -> "Recipe created successfully"
+            :edit -> "Recipe updated successfully"
           end
-          flash_msg =
-            case socket.assigns.live_action do
-              :new -> "Recipe created successfully"
-              :edit -> "Recipe updated successfully"
-            end
+
         {:noreply,
          socket
          |> put_flash(:info, flash_msg)
@@ -109,6 +144,11 @@ defmodule CooxWeb.RecipeLive.Form do
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
     end
+  end
+
+  def handle_event("validate", %{"recipe" => recipe_params}, socket) do
+    changeset = Recipes.change_recipe(socket.assigns.recipe, recipe_params)
+    {:noreply, assign(socket, form: to_form(changeset, action: :validate))}
   end
 
   defp save_recipe(socket, :edit, recipe_params) do
