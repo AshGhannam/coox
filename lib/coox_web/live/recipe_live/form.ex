@@ -176,6 +176,7 @@ defmodule CooxWeb.RecipeLive.Form do
   end
 
   def handle_event("validate", %{"recipe" => recipe_params}, socket) do
+    IO.inspect(recipe_params,label: "recipe_params")
     changeset = Recipes.change_recipe(socket.assigns.recipe, recipe_params)
     {:noreply, assign(socket, form: to_form(changeset, action: :validate))}
   end
